@@ -74,15 +74,8 @@ QDoubleSpinBox* TestTaskRemaster::getspnbxB()
 
 TestTaskRemaster::~TestTaskRemaster()
 {
-  delete _lblA;
-  delete _lblB;
-  delete _sldrA;
-  delete _sldrB;
-  delete _spnbxA;
-  delete _spnbxB;
-  delete _layout;
-  delete _timerA;
-  delete _timerB;
+  myViewer.quit();
+  //myViewer.wait();
 }
 
 int main(int argc, char *argv[])
@@ -90,8 +83,7 @@ int main(int argc, char *argv[])
   QApplication a(argc, argv);
   TestTaskRemaster w;
   w.show();
-  osg::ref_ptr<osg::Geode> geode = new osg::Geode;
-  MyRender* myRender = new MyRender(w.getspnbxA(), w.getspnbxB());//, geode);
-  myRender->start();
+  w.myViewer.start();
+  MyRender* myRender = new MyRender(w.myViewer._vwr, w.getspnbxA(), w.getspnbxB());//, geode);
   return a.exec();
 }

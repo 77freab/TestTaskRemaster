@@ -8,6 +8,14 @@
 #include <QThread>
 #include <mutex>
 
+class MyViewer : public QThread
+{
+public:
+  MyViewer();
+  osg::ref_ptr<osgViewer::Viewer> _vwr;
+  void run() override;
+};
+
 class ndCallback : public QObject, public osg::NodeCallback
 {
   Q_OBJECT
@@ -24,7 +32,7 @@ class MyMath : public QThread
 {
   Q_OBJECT
 public:
-  MyMath(const int, const double, osg::ref_ptr<ndCallback>);
+  MyMath(osg::ref_ptr<ndCallback>);
   void run() override;
 signals:
   void workFinish(osg::ref_ptr<osg::Vec3Array>);
@@ -34,24 +42,17 @@ public slots:
 private:
   double _a;
   double _b;
-  int _XY;
-  double _RES;
   std::mutex _mutex;
   std::condition_variable _condVar;
   bool _needUpdate;
 };
 
-class MyRender : public QThread, public osg::Geode
+class MyRender : public QObject, public osg::Geode
 {
   Q_OBJECT
 public:
-  MyRender(QDoubleSpinBox*, QDoubleSpinBox*);//, osg::ref_ptr<osg::Geode>);
-  void run() override;
-  ~MyRender();
+  MyRender(osg::ref_ptr<osgViewer::Viewer>, QDoubleSpinBox* spnbxA, QDoubleSpinBox* spnbxB);//, osg::ref_ptr<osg::Geode>);
 private:
-  const int _XY = 20;
-  const double _RES = 1;
-  osg::ref_ptr<osgViewer::Viewer> _viewer;
   osg::ref_ptr<osg::Geometry> _geom;
   osg::ref_ptr<ndCallback> _myCallback;
   MyMath* _myMath;
@@ -66,6 +67,7 @@ public:
   ~TestTaskRemaster();
   QDoubleSpinBox* getspnbxA();
   QDoubleSpinBox* getspnbxB();
+  MyViewer myViewer;
 private:
   QLabel* _lblA;
   QLabel* _lblB;
