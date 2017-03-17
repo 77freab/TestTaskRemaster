@@ -92,6 +92,6 @@ int main(int argc, char *argv[])
   w.show();
   osg::ref_ptr<osg::Geode> geode = new osg::Geode;
   MyRender* myRender = new MyRender(w.getspnbxA(), w.getspnbxB(), geode);
-  myRender->start();
+  //myRender->start();
   return a.exec();
 }

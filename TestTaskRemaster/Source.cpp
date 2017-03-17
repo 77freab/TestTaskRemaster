@@ -2,21 +2,24 @@
 #include <osg/array>
 #include <osgViewer\ViewerEventHandlers>
 
+Q_DECLARE_METATYPE(osg::ref_ptr<osg::Vec3Array>)
+
 MyRender::MyRender(QDoubleSpinBox* spnbxA, QDoubleSpinBox* spnbxB, osg::ref_ptr<osg::Geode> geode)
   : _geom(new osg::Geometry), _viewer(new osgViewer::Viewer), _myCallback(new ndCallback)
 {
-  _viewer = new osgViewer::Viewer;
-  _viewer->addEventHandler(new osgViewer::StatsHandler());
+  //_myCallback->moveToThread(this);
+  _viewer->setUpViewInWindow(200, 400, 800, 600);
+  this->start();
   _myMath = new MyMath(_XY, _RES, _myCallback);
   _myMath->moveToThread(&_mathThread);
   connect(spnbxA, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
     [this, spnbxA, spnbxB](double val){ _myMath->workBegin(val, spnbxB->value()); });
   connect(spnbxB, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
     [this, spnbxA, spnbxB](double val) { _myMath->workBegin(spnbxA->value(), val); });
-  _mathThread.start();//сконектить старт потока с работой + перенести колбек в рендертред (создать в нем или че)
+  connect(&_mathThread, &QThread::started,
+    [this, spnbxA, spnbxB] { _myMath->workBegin(spnbxA->value(), spnbxB->value()); });
+  _mathThread.start();
   
-  _viewer->setUpViewInWindow(200, 400, 800, 600);
-
   // нормали
   osg::ref_ptr<osg::Vec3Array> n = new osg::Vec3Array;
   _geom->setNormalArray(n);
@@ -39,10 +42,8 @@ MyRender::MyRender(QDoubleSpinBox* spnbxA, QDoubleSpinBox* spnbxB, osg::ref_ptr<
 
   geode->addDrawable(_geom);
   _geom->setDataVariance(osg::Object::DYNAMIC);
-  
   _geom->setUpdateCallback(_myCallback);
   _viewer->setSceneData(geode);
-  ///_viewer->run();
 }
 
 void MyRender::run()
@@ -60,6 +61,7 @@ MyRender::~MyRender()
 MyMath::MyMath(int XY, double RES, osg::ref_ptr<ndCallback> callback)
   : _XY(XY), _RES(RES)
 {
+  qRegisterMetaType<osg::ref_ptr<osg::Vec3Array>>();
   connect(this, &MyMath::workFinish,
     callback, &ndCallback::reRender);
 }
