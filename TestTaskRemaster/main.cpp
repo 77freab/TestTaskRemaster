@@ -72,18 +72,13 @@ QDoubleSpinBox* TestTaskRemaster::getspnbxB()
   return _spnbxB;
 }
 
-TestTaskRemaster::~TestTaskRemaster()
-{
-  myViewer.quit();
-  //myViewer.wait();
-}
-
 int main(int argc, char *argv[])
 {
   QApplication a(argc, argv);
   TestTaskRemaster w;
   w.show();
-  w.myViewer.start();
-  MyRender* myRender = new MyRender(w.myViewer._vwr, w.getspnbxA(), w.getspnbxB());//, geode);
+  MyViewer* tryViwer = new MyViewer;
+  tryViwer->start();
+  MyRender* myRender = new MyRender(tryViwer->_vwr, w.getspnbxA(), w.getspnbxB());
   return a.exec();
 }

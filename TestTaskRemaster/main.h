@@ -68,10 +68,8 @@ class TestTaskRemaster : public QWidget
   Q_OBJECT
 public:
   TestTaskRemaster(QWidget *parent = Q_NULLPTR);
-  ~TestTaskRemaster();
   QDoubleSpinBox* getspnbxA();
   QDoubleSpinBox* getspnbxB();
-  MyViewer myViewer;
 private:
   QLabel* _lblA;
   QLabel* _lblB;

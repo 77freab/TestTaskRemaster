@@ -5,12 +5,12 @@
 
 Q_DECLARE_METATYPE(osg::ref_ptr<osg::Vec3Array>)
 
-const int XY = 20;
-const double RES = 1;
+const int XY = 20; // рассто€ние прорисовки графика от центра
+const double RES = 1; // разрешение на графике
 
 double func(double a, double b, double x, double y, double t)
 {
-  double divisor = a*a*b*b*sin(t)*sin(t);
+  double divisor = a*a*b*b*sin(t)*sin(t); // если деление на 0 возвращаем 0
   return divisor != 0 ? sqrt( ((a*a*sin(t)*sin(t)*x*x+b*b+y*y) / (divisor)) + 1 ) : 0;
 };
 
@@ -19,9 +19,10 @@ MyViewer::MyViewer()
   _vwr = new osgViewer::Viewer;
   _vwr->setUpViewInWindow(200, 400, 800, 600);
   _vwr->addEventHandler(new osgViewer::StatsHandler());
+  //_vwr->setRunMaxFrameRate(1);
 }
 
-void MyViewer::run()
+void MyViewer::run() // вьювер запускаетс€ в отдельном потоке
 {
   _vwr->osgViewer::Viewer::run();
 }
@@ -30,17 +31,20 @@ MyRender::MyRender(osg::ref_ptr<osgViewer::Viewer> viewer, QDoubleSpinBox* spnbx
   : _geom(new osg::Geometry), _myCallback(new ndCallback)
 {
   _myMath = new MyMath(_myCallback);
+  // сигналы-слоты дл€ установки параметров ј, ¬
   connect(spnbxA, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
     [this, spnbxA, spnbxB](double val){ _myMath->setArgs(val, spnbxB->value()); });
   connect(spnbxB, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
     [this, spnbxA, spnbxB](double val) { _myMath->setArgs(spnbxA->value(), val); });
 
+  // сигнал-слот дл€ установки времени
   connect(_myCallback, &ndCallback::timeIsGoing,
     _myMath, &MyMath::setTime);
 
+  // прорисовка графика на старте
   connect(_myMath, &QThread::started,
     [this, spnbxA, spnbxB] { _myMath->setArgs(spnbxA->value(), spnbxB->value()); });
-  _myMath->start();
+  _myMath->start(); // запуск потока мат. вычислений
   
   // нормали
   osg::ref_ptr<osg::Vec3Array> n = new osg::Vec3Array;
@@ -54,9 +58,9 @@ MyRender::MyRender(osg::ref_ptr<osgViewer::Viewer> viewer, QDoubleSpinBox* spnbx
   _geom->setColorBinding(osg::Geometry::BIND_PER_VERTEX);
 
   // добавл€ем все полигоны и цвета
-  for (int i = 0; i < ((XY * XY * 8)*(1 / (RES * RES)))*2; i++)
+  for (int i = 0; i < ((XY * XY * 16)*(1 / (RES * RES))); i++)
   {
-    _geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POLYGON, i * 3, 3));
+    _geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::TRIANGLES, i * 3, 3));
     c->push_back(osg::Vec4(1.f, 0.f, 0.f, 1.f));
     c->push_back(osg::Vec4(0.f, 1.f, 0.f, 1.f));
     c->push_back(osg::Vec4(0.f, 0.f, 1.f, 1.f));
@@ -69,7 +73,7 @@ MyRender::MyRender(osg::ref_ptr<osgViewer::Viewer> viewer, QDoubleSpinBox* spnbx
 }
 
 MyMath::MyMath(osg::ref_ptr<ndCallback> callback)
-  : _a(1), _b(1), _needUpdate(false)
+  : _a(1), _b(1), _t(1), _needUpdate(false)
 {
   qRegisterMetaType<osg::ref_ptr<osg::Vec3Array>>();
   connect(this, &MyMath::workFinish,
@@ -116,7 +120,9 @@ void MyMath::setArgs(double a, double b)
 void MyMath::workBegin()
 {
   osg::ref_ptr<osg::Vec3Array> mathVec = new osg::Vec3Array;
+  //mathVec->resize((XY * XY * 16)*(1 / (RES * RES)));
   float a1, a21, a22, a3;
+  //sleep(1);
   for (float x = -XY; x < XY; x += RES)
   {
     for (float y = -XY; y < XY; y += RES)
