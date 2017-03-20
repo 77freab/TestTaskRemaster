@@ -1,4 +1,5 @@
 #include "main.h"
+#include <osg/MatrixTransform>
 
 TestTaskRemaster::TestTaskRemaster(QWidget *parent)
   : QWidget(parent)
@@ -77,8 +78,28 @@ int main(int argc, char *argv[])
   QApplication a(argc, argv);
   TestTaskRemaster w;
   w.show();
-  MyViewer* tryViwer = new MyViewer;
-  tryViwer->start();
-  MyRender* myRender = new MyRender(tryViwer->_vwr, w.getspnbxA(), w.getspnbxB());
+  viewerThread* myViwer = new viewerThread;
+  MyRender* myRender = new MyRender;
+
+  osg::ref_ptr<osg::MatrixTransform> mtLeft = new osg::MatrixTransform;
+  osg::Matrix m;
+  m.makeTranslate(-30, 0, 0);
+  mtLeft->setMatrix(m);
+  mtLeft->addChild(myRender);
+  osg::ref_ptr<osg::MatrixTransform> mtRight = new osg::MatrixTransform;
+  m.makeTranslate(30, 0, 0);
+  mtRight->setMatrix(m);
+  mtRight->addChild(myRender);
+  osg::ref_ptr<osg::Group> myGroup = new osg::Group;
+  myGroup->addChild(mtLeft);
+  myGroup->addChild(mtRight);
+
+  // сигналы-слоты для установки параметров А, В
+  QObject::connect(w.getspnbxA(), static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
+    myRender, &MyRender::argA);
+  QObject::connect(w.getspnbxB(), static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
+    myRender, &MyRender::argB);
+  myViwer->_viewer->setSceneData(myGroup);
+  myViwer->start();
   return a.exec();
 }

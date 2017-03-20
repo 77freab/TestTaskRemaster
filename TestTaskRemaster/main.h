@@ -8,11 +8,11 @@
 #include <QThread>
 #include <mutex>
 
-class MyViewer : public QThread
+class viewerThread : public QThread
 {
 public:
-  MyViewer();
-  osg::ref_ptr<osgViewer::Viewer> _vwr;
+  viewerThread();
+  osg::ref_ptr<osgViewer::Viewer> _viewer;
   void run() override;
 };
 
@@ -22,11 +22,12 @@ class ndCallback : public QObject, public osg::NodeCallback
 signals:
   void timeIsGoing(double t);
 public slots:
-  void reRender(osg::ref_ptr<osg::Vec3Array>);
+  void reRender(osg::ref_ptr<osg::Vec3Array> v, osg::ref_ptr<osg::Vec3Array> n);
 public:
   void operator()(osg::Node*, osg::NodeVisitor*);
 private:
   osg::ref_ptr<osg::Vec3Array> _v;
+  osg::ref_ptr<osg::Vec3Array> _n;
   std::mutex _mutex;
 };
 
@@ -37,10 +38,11 @@ public:
   MyMath(osg::ref_ptr<ndCallback>);
   void run() override;
 signals:
-  void workFinish(osg::ref_ptr<osg::Vec3Array>);
+  void workFinish(osg::ref_ptr<osg::Vec3Array> v, osg::ref_ptr<osg::Vec3Array> n);
 public slots:
-  void workBegin();
-  void setArgs(double a, double b);
+  void workBegin(double a, double b, double t);
+  void setA(double a);
+  void setB(double b);
   void setTime(double t);
 private:
   double _a;
@@ -55,7 +57,9 @@ class MyRender : public QObject, public osg::Geode
 {
   Q_OBJECT
 public:
-  MyRender(osg::ref_ptr<osgViewer::Viewer>, QDoubleSpinBox* spnbxA, QDoubleSpinBox* spnbxB);//, osg::ref_ptr<osg::Geode>);
+  MyRender();
+  void argA(double);
+  void argB(double);
 private:
   osg::ref_ptr<osg::Geometry> _geom;
   osg::ref_ptr<ndCallback> _myCallback;

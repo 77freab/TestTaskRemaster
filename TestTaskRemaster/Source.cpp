@@ -1,12 +1,16 @@
 #include "main.h"
 #include <osg/array>
 #include <osgViewer/ViewerEventHandlers>
-
+#include <QDebug>
+#include <osgGA\OrbitManipulator>
 
 Q_DECLARE_METATYPE(osg::ref_ptr<osg::Vec3Array>)
 
 const int XY = 20; // расстояние прорисовки графика от центра
 const double RES = 1; // разрешение на графике
+
+// Возвращает нормаль полигона (направление, куда повернут полигон)
+osg::Vec3 Normal(osg::Vec3 t1, osg::Vec3 t2, osg::Vec3 t3);
 
 double func(double a, double b, double x, double y, double t)
 {
@@ -14,43 +18,36 @@ double func(double a, double b, double x, double y, double t)
   return divisor != 0 ? sqrt( ((a*a*sin(t)*sin(t)*x*x+b*b+y*y) / (divisor)) + 1 ) : 0;
 };
 
-MyViewer::MyViewer()
+viewerThread::viewerThread()
 {
-  _vwr = new osgViewer::Viewer;
-  _vwr->setUpViewInWindow(200, 400, 800, 600);
-  _vwr->addEventHandler(new osgViewer::StatsHandler());
+  _viewer = new osgViewer::Viewer;
+  _viewer->setUpViewInWindow(200, 400, 800, 600);
+  _viewer->addEventHandler(new osgViewer::StatsHandler());
+  auto manip = new osgGA::OrbitManipulator();
+  _viewer->setCameraManipulator(manip);
+  manip->setDistance(2000);
+  
+  //_viewer->getCamera()->setProjectionMatrixAsPerspective(45.0, 1.0, 0.5, 1000);
+  //_viewer->getCamera()->setViewMatrix(osg::Matrix::lookAt(
+   // osg::Vec3(0, -2000, 0), osg::Vec3(0, 0, 0), osg::Vec3(0, 0, 1)));
   //_vwr->setRunMaxFrameRate(1);
 }
 
-void MyViewer::run() // вьювер запускается в отдельном потоке
+void viewerThread::run() // вьювер запускается в отдельном потоке
 {
-  _vwr->osgViewer::Viewer::run();
+  _viewer->run();
 }
 
-MyRender::MyRender(osg::ref_ptr<osgViewer::Viewer> viewer, QDoubleSpinBox* spnbxA, QDoubleSpinBox* spnbxB)//, osg::ref_ptr<osg::Geode> geode)
-  : _geom(new osg::Geometry), _myCallback(new ndCallback)
+MyRender::MyRender()
+  : _geom(new osg::Geometry), _myCallback(new ndCallback), _myMath(new MyMath(_myCallback))
 {
-  _myMath = new MyMath(_myCallback);
-  // сигналы-слоты для установки параметров А, В
-  connect(spnbxA, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
-    [this, spnbxA, spnbxB](double val){ _myMath->setArgs(val, spnbxB->value()); });
-  connect(spnbxB, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
-    [this, spnbxA, spnbxB](double val) { _myMath->setArgs(spnbxA->value(), val); });
-
   // сигнал-слот для установки времени
   connect(_myCallback, &ndCallback::timeIsGoing,
-    _myMath, &MyMath::setTime);
+    _myMath, &MyMath::setTime, Qt::DirectConnection);
 
-  // прорисовка графика на старте
-  connect(_myMath, &QThread::started,
-    [this, spnbxA, spnbxB] { _myMath->setArgs(spnbxA->value(), spnbxB->value()); });
   _myMath->start(); // запуск потока мат. вычислений
   
-  // нормали
-  osg::ref_ptr<osg::Vec3Array> n = new osg::Vec3Array;
-  _geom->setNormalArray(n);
-  _geom->setNormalBinding(osg::Geometry::BIND_OVERALL);
-  n->push_back(osg::Vec3(0.f, 0.f, 1.f));
+  //_geom->setNormalBinding(osg::Geometry::BIND_PER_PRIMITIVE_SET);
 
   // цвет
   osg::ref_ptr<osg::Vec4Array> c = new osg::Vec4Array;
@@ -69,7 +66,16 @@ MyRender::MyRender(osg::ref_ptr<osgViewer::Viewer> viewer, QDoubleSpinBox* spnbx
   this->addDrawable(_geom);
   _geom->setDataVariance(osg::Object::DYNAMIC);
   _geom->setUpdateCallback(_myCallback);
-  viewer->setSceneData(this);
+}
+
+void MyRender::argA(double a)
+{
+  _myMath->setA(a);
+}
+
+void MyRender::argB(double b)
+{
+  _myMath->setB(b);
 }
 
 MyMath::MyMath(osg::ref_ptr<ndCallback> callback)
@@ -92,7 +98,7 @@ void MyMath::run()
       }
       _needUpdate = false;
     }
-    workBegin();
+    workBegin(_a, _b, _t);
   }
 }
 
@@ -106,21 +112,33 @@ void MyMath::setTime(double t)
   _condVar.notify_one();
 }
 
-void MyMath::setArgs(double a, double b)
+void MyMath::setA(double a)
 {
   {
     std::unique_lock<std::mutex> lock(_mutex);
     _a = a;
+    _needUpdate = true;
+  }
+  _condVar.notify_one();
+}
+
+void MyMath::setB(double b)
+{
+  {
+    std::unique_lock<std::mutex> lock(_mutex);
     _b = b;
     _needUpdate = true;
   }
   _condVar.notify_one();
 }
 
-void MyMath::workBegin()
+void MyMath::workBegin(double a, double b, double t)
 {
-  osg::ref_ptr<osg::Vec3Array> mathVec = new osg::Vec3Array;
-  //mathVec->resize((XY * XY * 16)*(1 / (RES * RES)));
+  osg::ref_ptr<osg::Vec3Array> mathVertices = new osg::Vec3Array;
+  osg::ref_ptr<osg::Vec3Array> mathNormals = new osg::Vec3Array;
+  mathNormals->setBinding(osg::Array::BIND_PER_PRIMITIVE_SET);
+  mathVertices->reserve((XY * XY * 16)*(1 / (RES * RES))*3);
+  mathNormals->reserve((XY * XY * 16)*(1 / (RES * RES)));
   float a1, a21, a22, a3;
   //sleep(1);
   for (float x = -XY; x < XY; x += RES)
@@ -135,35 +153,44 @@ void MyMath::workBegin()
       //a22 = (x + RES)*(x + RES) - y*y;
       //a3  = (x + RES)*(x + RES) - (y + RES)*(y + RES);
 
-      a1  = func(_a, _b,       x,       y, _t);
-      a21 = func(_a, _b,       x, y + RES, _t);
-      a22 = func(_a, _b, x + RES,       y, _t);
-      a3  = func(_a, _b, x + RES, y + RES, _t);
+      a1  = func(a, b,       x,       y, t);
+      a21 = func(a, b,       x, y + RES, t);
+      a22 = func(a, b, x + RES,       y, t);
+      a3  = func(a, b, x + RES, y + RES, t);
 
-      mathVec->push_back(osg::Vec3(      x,       y, a1));//1
-      mathVec->push_back(osg::Vec3(      x, y + RES, a21));//2-1
-      mathVec->push_back(osg::Vec3(x + RES,       y, a22));//2-2
+      mathVertices->push_back(osg::Vec3(      x,       y, a1));//1
+      mathVertices->push_back(osg::Vec3(      x, y + RES, a21));//2-1
+      mathVertices->push_back(osg::Vec3(x + RES,       y, a22));//2-2
+      mathNormals->push_back(Normal(
+        osg::Vec3(x, y + RES, a21), osg::Vec3(x, y, a1), osg::Vec3(x + RES, y, a22))); // y, x, z
 
-      mathVec->push_back(osg::Vec3(x + RES, y + RES, a3));//3
-      mathVec->push_back(osg::Vec3(      x, y + RES, a21));//2-1
-      mathVec->push_back(osg::Vec3(x + RES,       y, a22));//2-2
+      mathVertices->push_back(osg::Vec3(x + RES, y + RES, a3));//3
+      mathVertices->push_back(osg::Vec3(      x, y + RES, a21));//2-1
+      mathVertices->push_back(osg::Vec3(x + RES,       y, a22));//2-2
+      mathNormals->push_back(Normal(
+        osg::Vec3(x + RES, y + RES, a3), osg::Vec3(x, y + RES, a21), osg::Vec3(x + RES, y, a22))); // x, y, z
 
-      mathVec->push_back(osg::Vec3(      x,       y, -a1));//1
-      mathVec->push_back(osg::Vec3(      x, y + RES, -a21));//2-1
-      mathVec->push_back(osg::Vec3(x + RES,       y, -a22));//2-2
+      mathVertices->push_back(osg::Vec3(      x,       y, -a1));//1
+      mathVertices->push_back(osg::Vec3(      x, y + RES, -a21));//2-1
+      mathVertices->push_back(osg::Vec3(x + RES,       y, -a22));//2-2
+      mathNormals->push_back(Normal(
+        osg::Vec3(x, y + RES, a21), osg::Vec3(x, y, a1), osg::Vec3(x + RES, y, a22))); // y, x, z
 
-      mathVec->push_back(osg::Vec3(x + RES, y + RES, -a3));//3
-      mathVec->push_back(osg::Vec3(      x, y + RES, -a21));//2-1
-      mathVec->push_back(osg::Vec3(x + RES,       y, -a22));//2-2
+      mathVertices->push_back(osg::Vec3(x + RES, y + RES, -a3));//3
+      mathVertices->push_back(osg::Vec3(      x, y + RES, -a21));//2-1
+      mathVertices->push_back(osg::Vec3(x + RES,       y, -a22));//2-2
+      mathNormals->push_back(Normal(
+        osg::Vec3(x + RES, y + RES, a3), osg::Vec3(x, y + RES, a21), osg::Vec3(x + RES, y, a22))); // x, y, z
     }
   }
-  emit workFinish(mathVec);
+  emit workFinish(mathVertices, mathNormals);
 }
 
-void ndCallback::reRender(osg::ref_ptr<osg::Vec3Array> v)
+void ndCallback::reRender(osg::ref_ptr<osg::Vec3Array> v, osg::ref_ptr<osg::Vec3Array> n)
 {
   std::unique_lock<std::mutex> lock(_mutex);
   _v = v;
+  _n = n;
 }
 
 void ndCallback::operator()(osg::Node* nd, osg::NodeVisitor* ndv)
@@ -171,6 +198,7 @@ void ndCallback::operator()(osg::Node* nd, osg::NodeVisitor* ndv)
   {
     std::unique_lock<std::mutex> lock(_mutex);
     nd->asGeometry()->setVertexArray(_v);
+    nd->asGeometry()->setNormalArray(_n);
   }
   emit timeIsGoing(ndv->getFrameStamp()->getSimulationTime());
   traverse(nd, ndv);
