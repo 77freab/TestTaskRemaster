@@ -34,6 +34,10 @@ MyRender::MyRender(osg::ref_ptr<osgViewer::Viewer> viewer, QDoubleSpinBox* spnbx
     [this, spnbxA, spnbxB](double val){ _myMath->setArgs(val, spnbxB->value()); });
   connect(spnbxB, static_cast<void (QDoubleSpinBox::*) (double)>(&QDoubleSpinBox::valueChanged),
     [this, spnbxA, spnbxB](double val) { _myMath->setArgs(spnbxA->value(), val); });
+
+  connect(_myCallback, &ndCallback::timeIsGoing,
+    _myMath, &MyMath::setTime);
+
   connect(_myMath, &QThread::started,
     [this, spnbxA, spnbxB] { _myMath->setArgs(spnbxA->value(), spnbxB->value()); });
   _myMath->start();
@@ -76,19 +80,26 @@ void MyMath::run()
 {
   while (true)
   {
-    double a, b;
     {
       std::unique_lock<std::mutex> lock(_mutex);
       while (!_needUpdate)
       {
         _condVar.wait(lock);
       }
-      a = _a;
-      b = _b;
       _needUpdate = false;
     }
-    workBegin(a, b);
+    workBegin();
   }
+}
+
+void MyMath::setTime(double t)
+{
+  {
+    std::unique_lock<std::mutex> lock(_mutex);
+    _t = t;
+    _needUpdate = true;
+  }
+  _condVar.notify_one();
 }
 
 void MyMath::setArgs(double a, double b)
@@ -102,27 +113,26 @@ void MyMath::setArgs(double a, double b)
   _condVar.notify_one();
 }
 
-void MyMath::workBegin(double a, double b)//, double t)
+void MyMath::workBegin()
 {
   osg::ref_ptr<osg::Vec3Array> mathVec = new osg::Vec3Array;
   float a1, a21, a22, a3;
-  int t = 1;
   for (float x = -XY; x < XY; x += RES)
   {
     for (float y = -XY; y < XY; y += RES)
     {
-      //a1 = a21 = a;
-      //a22 = a3 = b;
+      //a1 = a21 = _a;
+      //a22 = a3 = _b;
 
       //a1  = x*x - y*y;
       //a21 = x*x - (y + RES)*(y + RES);
       //a22 = (x + RES)*(x + RES) - y*y;
       //a3  = (x + RES)*(x + RES) - (y + RES)*(y + RES);
 
-      a1  = func(a, b,       x,       y, t);
-      a21 = func(a, b,       x, y + RES, t);
-      a22 = func(a, b, x + RES,       y, t);
-      a3  = func(a, b, x + RES, y + RES, t);
+      a1  = func(_a, _b,       x,       y, _t);
+      a21 = func(_a, _b,       x, y + RES, _t);
+      a22 = func(_a, _b, x + RES,       y, _t);
+      a3  = func(_a, _b, x + RES, y + RES, _t);
 
       mathVec->push_back(osg::Vec3(      x,       y, a1));//1
       mathVec->push_back(osg::Vec3(      x, y + RES, a21));//2-1
@@ -152,10 +162,10 @@ void ndCallback::reRender(osg::ref_ptr<osg::Vec3Array> v)
 
 void ndCallback::operator()(osg::Node* nd, osg::NodeVisitor* ndv)
 {
-  osg::Geometry* geom = dynamic_cast<osg::Geometry*>(nd);
   {
     std::unique_lock<std::mutex> lock(_mutex);
-    geom->setVertexArray(_v);
+    nd->asGeometry()->setVertexArray(_v);
   }
+  emit timeIsGoing(ndv->getFrameStamp()->getSimulationTime());
   traverse(nd, ndv);
 }

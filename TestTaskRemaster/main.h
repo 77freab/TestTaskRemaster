@@ -19,6 +19,8 @@ public:
 class ndCallback : public QObject, public osg::NodeCallback
 {
   Q_OBJECT
+signals:
+  void timeIsGoing(double t);
 public slots:
   void reRender(osg::ref_ptr<osg::Vec3Array>);
 public:
@@ -37,11 +39,13 @@ public:
 signals:
   void workFinish(osg::ref_ptr<osg::Vec3Array>);
 public slots:
-  void workBegin(double a, double b);
+  void workBegin();
   void setArgs(double a, double b);
+  void setTime(double t);
 private:
   double _a;
   double _b;
+  double _t;
   std::mutex _mutex;
   std::condition_variable _condVar;
   bool _needUpdate;
