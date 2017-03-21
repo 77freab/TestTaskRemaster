@@ -86,10 +86,12 @@ int main(int argc, char *argv[])
   m.makeTranslate(-30, 0, 0);
   mtLeft->setMatrix(m);
   mtLeft->addChild(myRender);
+
   osg::ref_ptr<osg::MatrixTransform> mtRight = new osg::MatrixTransform;
   m.makeTranslate(30, 0, 0);
   mtRight->setMatrix(m);
   mtRight->addChild(myRender);
+
   osg::ref_ptr<osg::Group> myGroup = new osg::Group;
   myGroup->addChild(mtLeft);
   myGroup->addChild(mtRight);
