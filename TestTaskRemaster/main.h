@@ -5,10 +5,11 @@
 #include <osgViewer/Viewer>
 #include <osg/Geometry>
 #include <osg/ref_ptr>
+#include <osg/MatrixTransform>
 #include <QThread>
 #include <mutex>
 
-class viewerThread : public QThread
+class viewerThread : public QThread, public osg::Referenced
 {
 public:
   viewerThread();
@@ -53,7 +54,7 @@ private:
   bool _needUpdate;
 };
 
-class MyRender : public QObject, public osg::Geode
+class MyRender : public QObject, public osg::Group
 {
   Q_OBJECT
 public:
@@ -62,6 +63,8 @@ public:
   void argB(double);
 private:
   osg::ref_ptr<osg::Geometry> _geom;
+  osg::ref_ptr<osg::Geode> _top;
+  osg::ref_ptr<osg::MatrixTransform> _bottomMT;
   osg::ref_ptr<ndCallback> _myCallback;
   MyMath* _myMath;
 };

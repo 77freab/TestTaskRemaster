@@ -1,5 +1,5 @@
 #include "main.h"
-#include <osg/MatrixTransform>
+#include <QScopedPointer> 
 
 TestTaskRemaster::TestTaskRemaster(QWidget *parent)
   : QWidget(parent)
@@ -78,8 +78,8 @@ int main(int argc, char *argv[])
   QApplication a(argc, argv);
   TestTaskRemaster w;
   w.show();
-  viewerThread* myViwer = new viewerThread;
-  MyRender* myRender = new MyRender;
+  osg::ref_ptr<viewerThread> myViwer = new viewerThread;
+  osg::ref_ptr<MyRender> myRender = new MyRender;
 
   osg::ref_ptr<osg::MatrixTransform> mtLeft = new osg::MatrixTransform;
   osg::Matrix m;

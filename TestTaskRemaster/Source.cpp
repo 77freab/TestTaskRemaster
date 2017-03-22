@@ -7,10 +7,9 @@
 Q_DECLARE_METATYPE(osg::ref_ptr<osg::Vec3Array>)
 
 const int XY = 20; // расстояние прорисовки графика от центра
-const double RES = 1; // разрешение на графике
-
-// Возвращает нормаль полигона (направление, куда повернут полигон)
-osg::Vec3 Normal(osg::Vec3 t1, osg::Vec3 t2, osg::Vec3 t3);
+const float RES = 1; // разрешение на графике
+const int NumVerticesInStripe = ((4 * XY) / RES) + 2; // кол-во вершин в страйпе
+const int NumVerticesInSurfase = NumVerticesInStripe * ((2 * XY) / RES); // кол-во вершин на одной поверхности
 
 double func(double a, double b, double x, double y, double t)
 {
@@ -23,11 +22,7 @@ viewerThread::viewerThread()
 {
   _viewer->setUpViewInWindow(200, 400, 800, 600);
   _viewer->addEventHandler(new osgViewer::StatsHandler());
-  
-  //_viewer->getCamera()->setProjectionMatrixAsPerspective(45.0, 1.0, 0.5, 1000);
-  //_viewer->getCamera()->setViewMatrix(osg::Matrix::lookAt(
-   // osg::Vec3(0, -2000, 0), osg::Vec3(0, 0, 0), osg::Vec3(0, 0, 1)));
-  //_vwr->setRunMaxFrameRate(1);
+  //_vwr->setRunMaxFrameRate(1); // ограничение кол-ва кадров в сек.
 }
 
 // вьювер запускается в отдельном потоке
@@ -37,7 +32,8 @@ void viewerThread::run()
 }
 
 MyRender::MyRender()
-  : _geom(new osg::Geometry), _myCallback(new ndCallback), _myMath(new MyMath(_myCallback))
+  : _geom(new osg::Geometry), _myCallback(new ndCallback), _myMath(new MyMath(_myCallback)),
+  _top(new osg::Geode), _bottomMT(new osg::MatrixTransform)
 {
   // сигнал-слот для установки времени
   connect(_myCallback, &ndCallback::timeIsGoing,
@@ -45,21 +41,16 @@ MyRender::MyRender()
 
   _myMath->start(); // запуск потока мат. вычислений
 
-  //osg::ref_ptr<osg::Vec3Array> n = new osg::Vec3Array;
-  //n->setBinding(osg::Array::BIND_OVERALL);
-  //_geom->setNormalArray(n);
-  //n->push_back(osg::Vec3(0.f, 0.f, 1.f));
-
   // цвет
   osg::ref_ptr<osg::Vec4Array> c = new osg::Vec4Array;
   _geom->setColorArray(c);
   _geom->setColorBinding(osg::Geometry::BIND_PER_VERTEX);
 
   // добавляем все примитивы и цвета
-  for (int i = 0; i < (((4 * XY) / RES) + 2) * ((2 * XY) / RES) * 2; i += ((4 * XY)/ RES) + 2) //(((4 * XY)/ RES) + 2) - точек в страйпе, (((4 * XY)/ RES) + 2) * ((2 * XY) / RES) - всего точек в 1 поверхности
-    _geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::TRIANGLE_STRIP, i, ((4 * XY)/ RES) + 2  ));
+  for (int i = 0; i < NumVerticesInSurfase; i += NumVerticesInStripe)
+    _geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::TRIANGLE_STRIP, i, NumVerticesInStripe));
 
-  for (int i = 0; i < (((4 * XY) / RES) + 2) * ((2 * XY) / RES); i++)
+  for (int i = 0; i < NumVerticesInSurfase; i++)
   {
     c->push_back(osg::Vec4(1.f, 0.f, 0.f, 1.f));
     c->push_back(osg::Vec4(0.f, 1.f, 0.f, 1.f));
@@ -67,10 +58,20 @@ MyRender::MyRender()
     c->push_back(osg::Vec4(0.f, 0.f, 0.f, 1.f));
   }
 
-  this->addDrawable(_geom);
   _geom->setDataVariance(osg::Object::DYNAMIC);
   _geom->setUpdateCallback(_myCallback);
   setInitialBound(osg::BoundingBox(-20, -20, -20, 20, 20, 20));
+  _top->addDrawable(_geom);
+
+  // нижняя плоскость разворачивается и перемещается
+  osg::Matrix mT, mR;
+  mT.makeTranslate(0, 0, 3.64191866);
+  mR.makeRotate(osg::PI, osg::Vec3(0, 1, 0));
+  _bottomMT->setMatrix(mT * mR);
+  _bottomMT->addChild(_top);
+
+  this->addChild(_top);
+  this->addChild(_bottomMT);
 }
 
 // слоты соединенные с QDoubleSpinBox
@@ -147,9 +148,10 @@ void MyMath::workBegin(double a, double b, double t)
   osg::ref_ptr<osg::Vec3Array> mathVertices = new osg::Vec3Array;
   osg::ref_ptr<osg::Vec3Array> mathNormals = new osg::Vec3Array;
   mathNormals->setBinding(osg::Array::BIND_PER_VERTEX);
-  mathVertices->reserve((((4 * XY) / RES) + 2) * ((2 * XY) / RES) * 2);
-  mathNormals->reserve((((4 * XY) / RES) + 2) * ((2 * XY) / RES) * 2);
-  float a1, a2, a3;
+  mathVertices->reserve(NumVerticesInSurfase * 2);
+  mathNormals->reserve(NumVerticesInSurfase * 2);
+  float z1, z2, z3; // координаты z для точек
+  osg::Vec3 t1, t2, t3, n; // точки и нормаль
   //sleep(1);
   for (float x = -XY; x < XY; x += RES)
     for (float y = -XY; y < XY+RES; y += RES)
@@ -159,32 +161,22 @@ void MyMath::workBegin(double a, double b, double t)
       //a2 = _b;
 
       // поверхность по заданию
-      a1 = func(a, b,       x,       y, t);
-      a2 = func(a, b, x + RES,       y, t);
-      a3 = func(a, b,       x, y + RES, t);
+      z1 = func(a, b,       x,       y, t);
+      z2 = func(a, b, x + RES,       y, t);
+      z3 = func(a, b,       x, y + RES, t);
 
-      mathVertices->push_back(osg::Vec3(      x, y, a1));
-      mathVertices->push_back(osg::Vec3(x + RES, y, a2));
+      t1 = {       x,       y, z1 };
+      t2 = { x + RES,       y, z2 };
+      t3 = {       x, y + RES, z3 };
 
-      mathNormals->push_back(Normal(
-        osg::Vec3(x, y, a1), osg::Vec3(x + RES, y, a2), osg::Vec3(x, y + RES, a3)));
-      mathNormals->push_back(Normal(
-        osg::Vec3(x, y, a1), osg::Vec3(x + RES, y, a2), osg::Vec3(x, y + RES, a3)));
-    }
-  for (float x = -XY; x < XY; x += RES)
-    for (float y = -XY; y < XY+RES; y += RES)
-    {
-      a1 = func(a, b,       x,       y, t);
-      a2 = func(a, b, x + RES,       y, t);
-      a3 = func(a, b,       x, y + RES, t);
+      n = (t3 - t1) ^ (t2 - t1); // вычисляем нормали
+      n.normalize();
 
-      mathVertices->push_back(osg::Vec3(      x, y, -a1));
-      mathVertices->push_back(osg::Vec3(x + RES, y, -a2));
+      mathVertices->push_back(t1);
+      mathVertices->push_back(t2);
 
-      mathNormals->push_back(Normal(
-        osg::Vec3(x, y, a1), osg::Vec3(x + RES, y, a2), osg::Vec3(x, y + RES, a3)));
-      mathNormals->push_back(Normal(
-        osg::Vec3(x, y, a1), osg::Vec3(x + RES, y, a2), osg::Vec3(x, y + RES, a3)));
+      mathNormals->push_back(n);
+      mathNormals->push_back(n);
     }
   emit workFinish(mathVertices, mathNormals);
 }

@@ -144,7 +144,6 @@
     </ClCompile>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Source.cpp" />
-    <ClCompile Include="normals.cpp" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="main.h">

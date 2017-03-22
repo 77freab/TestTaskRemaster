@@ -55,9 +55,6 @@
     <ClCompile Include="GeneratedFiles\Release\moc_main.cpp">
       <Filter>Generated Files\Release</Filter>
     </ClCompile>
-    <ClCompile Include="normals.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="TestTaskRemaster.qrc">
